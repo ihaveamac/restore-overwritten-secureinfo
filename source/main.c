@@ -204,8 +204,21 @@ void unmount_archives(void) {
 }
 
 bool is_serial_number_valid(char *serial) {
-	// this is a separate function in case this needs to be a more complicated function
-	return serial[0] != 0;
+	// this makes the assumption that garbage doesn't somehow become these letters
+	// but that's probably okay...
+	switch(serial[0]) {
+		case 'C': // Old 3DS
+		case 'S': // Old 3DS XL/LL
+		case 'A': // Old 2DS
+		case 'Y': // New 3DS
+		case 'Q': // New 3DS XL/LL
+		case 'N': // New 2DS XL/LL
+		case 'E': // Dev unit
+		case 'R': // Dev unit
+			return true;
+		default:
+			return false;
+	}
 }
 
 bool backup_old_secureinfo(void) {
