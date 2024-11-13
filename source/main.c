@@ -249,12 +249,18 @@ bool backup_old_secureinfo(void) {
 
 bool write_new_secureinfo_ab(void) {
 	FILE *f;
+	time_t rawtime;
+	struct tm *timeinfo;
 
 	f = fopen_log(data.secureinfo_ab_path, "wb");
 	if (!f) {
 		printf("Error opening: %s\n", strerror(errno));
 		return false;
 	}
+
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+	snprintf(data.secureinfo_ab_replacement.signature, 0x100, "restored by https://github.com/ihaveamac/restore-overwritten-secureinfo at %s", asctime(timeinfo));
 
 	fwrite(&data.secureinfo_ab_replacement, sizeof(struct SecureInfo), 1, f);
 	fclose(f);
