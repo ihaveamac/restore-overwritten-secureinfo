@@ -9,6 +9,8 @@
 // this is because SecureInfo_* lets it go up to 15 bytes
 #define SERIAL_NUMBER_MAX 16
 
+#define SECINFO_C_PATH "ctrn:/rw/sys/SecureInfo_C"
+
 struct SecureInfo {
 	char signature[0x100];
 	uint8_t region;
@@ -37,7 +39,7 @@ struct AppStateData {
 	char secureinfo_ab_path[26];
 	struct SecureInfo secureinfo_ab;
 	struct SecureInfo secureinfo_c;
-	struct SecureInfo secureinfo_ab_replacement;
+	struct SecureInfo secureinfo_c_replacement;
 	bool secureinfo_c_loaded;
 	PrintConsole top;
 	PrintConsole bottom;
@@ -45,6 +47,7 @@ struct AppStateData {
 };
 
 char regions[7][4] = {"JPN", "USA", "EUR", "AUS", "CHN", "KOR", "TWN"};
+char regions_lower[7][4] = {"jpn", "usa", "eur", "aus", "chn", "kor", "twn"};
 
 struct AppStateData data;
 
@@ -84,7 +87,7 @@ size_t get_serial_number_from_inspect_log(char *serial_out, char *inspect_log) {
 
 void print_header(void) {
 	consoleClear();
-	printf("restore-overwritten-secureinfo by ihaveahax\n");
+	printf("restore-overwritten-secureinfo " VERSION " by ihaveahax\n");
 	printf("\n");
 }
 
@@ -154,20 +157,6 @@ bool read_secureinfo(char letter, struct SecureInfo *out) {
 	if (!f) {
 		return false;
 	}
-	
-	//ab = 'A';
-	//f = fopen("ctrn:/rw/sys/SecureInfo_A", "rb");
-	//if (!f) {
-	//	ab = 'B';
-	//	f = fopen("ctrn:/rw/sys/SecureInfo_B", "rb");
-	//	if (!f) {
-	//		printf("err: %s\n", strerror(errno));
-	//		/*      -------------------------------------------------- */
-	//		printf("Could not open SecureInfo_A or SecureInfo_B.\n");
-	//		printf("This should be impossible!!!\n");
-	//		return 0;
-	//	}
-	//}
 
 	fread(out, sizeof(struct SecureInfo), 1, f);
 	fclose(f);
@@ -223,12 +212,9 @@ bool is_serial_number_valid(char *serial) {
 
 bool backup_old_secureinfo(void) {
 	int res;
-	//char secinfo_ab_path[26] = {0};
 	char secinfo_ab_new_path[36] = {0};
-	char *secinfo_c_path = "ctrn:/rw/sys/SecureInfo_C";
 	char secinfo_c_new_path[36] = {0};
 
-	//snprintf(secinfo_ab_path, 26, "ctrn:/rw/sys/SecureInfo_%c", data.secureinfo_ab_letter);
 	snprintf(secinfo_ab_new_path, 36, "%s.bak-%03i", data.secureinfo_ab_path, data.randval);
 	res = rename_log(data.secureinfo_ab_path, secinfo_ab_new_path);
 	if (res) {
@@ -237,8 +223,8 @@ bool backup_old_secureinfo(void) {
 	}
 
 	if (data.secureinfo_c_loaded) {
-		snprintf(secinfo_c_new_path, 36, "%s.bak-%03i", secinfo_c_path, data.randval);
-		res = rename_log(secinfo_c_path, secinfo_c_new_path);
+		snprintf(secinfo_c_new_path, 36, "%s.bak-%03i", SECINFO_C_PATH, data.randval);
+		res = rename_log(SECINFO_C_PATH, secinfo_c_new_path);
 		if (res) {
 			printf("Error on renaming: %s\n", strerror(errno));
 			return false;
@@ -247,23 +233,52 @@ bool backup_old_secureinfo(void) {
 	return true;
 }
 
-bool write_new_secureinfo_ab(void) {
-	FILE *f;
+bool write_new_secureinfo(void) {
+	FILE *secinfo_ab_f;
+	FILE *secinfo_c_f;
+	FILE *laz_f;
 	time_t rawtime;
 	struct tm *timeinfo;
+	char laz_secureinfo_path[34];
+	struct SecureInfo laz_buf;
 
-	f = fopen_log(data.secureinfo_ab_path, "wb");
-	if (!f) {
+	bool is_new_3ds;
+
+	APT_CheckNew3DS(&is_new_3ds);
+
+	snprintf(laz_secureinfo_path, 34, "romfs:/secinfo-%s-%s-retail.bin", (is_new_3ds ? "new" : "old"), regions_lower[data.target_region]);
+
+	laz_f = fopen_log(laz_secureinfo_path, "rb");
+	if (!laz_f) {
+		printf("Error opening: %s\n", strerror(errno));
+	}
+
+	fread(&laz_buf, sizeof(struct SecureInfo), 1, laz_f);
+	fclose(laz_f);
+
+	secinfo_ab_f = fopen_log(data.secureinfo_ab_path, "wb");
+	if (!secinfo_ab_f) {
+		printf("Error opening: %s\n", strerror(errno));
+		return false;
+	}
+
+	printf("Writing new SecureInfo_%c.\n", data.secureinfo_ab_letter);
+	fwrite(&laz_buf, sizeof(struct SecureInfo), 1, secinfo_ab_f);
+	fclose(secinfo_ab_f);
+
+	secinfo_c_f = fopen_log(SECINFO_C_PATH, "wb");
+	if (!secinfo_c_f) {
 		printf("Error opening: %s\n", strerror(errno));
 		return false;
 	}
 
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
-	snprintf(data.secureinfo_ab_replacement.signature, 0x100, "restored by https://github.com/ihaveamac/restore-overwritten-secureinfo at %s", asctime(timeinfo));
+	snprintf(data.secureinfo_c_replacement.signature, 0x100, "restored by https://github.com/ihaveamac/restore-overwritten-secureinfo at %s", asctime(timeinfo));
 
-	fwrite(&data.secureinfo_ab_replacement, sizeof(struct SecureInfo), 1, f);
-	fclose(f);
+	printf("Writing new SecureInfo_C.\n");
+	fwrite(&data.secureinfo_c_replacement, sizeof(struct SecureInfo), 1, secinfo_c_f);
+	fclose(secinfo_c_f);
 	return true;
 }
 
@@ -299,7 +314,7 @@ enum AppState update_state(enum AppState wanted, u32 kDown) {
 				/*      -------------------------------------------------- */
 				printf("\nA fatal error has happened.\n");
 				printf("Please ask on Nintendo Homebrew for assistance.\n");
-				printf("\nPress START or B to exit.");
+				printf("\nPress START or B to exit.\n");
 			}
 
 			if (kDown & KEY_START || kDown & KEY_B) {
@@ -308,7 +323,7 @@ enum AppState update_state(enum AppState wanted, u32 kDown) {
 			break;
 		case ROS_WaitingExit:
 			if (changing) {
-				printf("\nPress START or B to exit.");
+				printf("\nPress START or B to exit.\n");
 			}
 
 			if (kDown & KEY_START || kDown & KEY_B) {
@@ -318,7 +333,7 @@ enum AppState update_state(enum AppState wanted, u32 kDown) {
 		case ROS_WaitingRebootExit:
 			if (changing) {
 				printf("\nPress X to reboot.");
-				printf("\nPress START or B to exit.");
+				printf("\nPress START or B to exit.\n");
 			}
 
 			if (kDown & KEY_START || kDown & KEY_B) {
@@ -378,15 +393,16 @@ enum AppState update_state(enum AppState wanted, u32 kDown) {
 				printf("inspect.log SN: %s\n", data.log_serial_number);
 
 				// this doesn't need to worry about being null-terminated
-				memcpy(data.secureinfo_ab_replacement.serial, data.log_serial_number, SERIAL_NUMBER_MAX - 1);
-				data.secureinfo_ab_replacement.region = data.target_region;
+				memcpy(data.secureinfo_c_replacement.serial, data.log_serial_number, SERIAL_NUMBER_MAX - 1);
+				data.secureinfo_c_replacement.region = data.target_region;
 
 				/*      -------------------------------------------------- */
 				printf("\nThis tool will copy the above serial number to\n");
-				printf("SecureInfo_%c. Do you want to continue?\n\n", data.secureinfo_ab_letter);
+				printf("SecureInfo_C, while putting a signed file in place");
+				printf("of SecureInfo_%c. Do you want to continue?\n\n", data.secureinfo_ab_letter);
 
 				printf("Press X to restore SecureInfo_%C.\n", data.secureinfo_ab_letter);
-				printf("Press START or B to exit.");
+				printf("Press START or B to exit.\n");
 			}
 
 			if (kDown & KEY_START || kDown & KEY_B) {
@@ -404,11 +420,10 @@ enum AppState update_state(enum AppState wanted, u32 kDown) {
 					break;
 				}
 
-				printf("Writing new SecureInfo_%c.\n", data.secureinfo_ab_letter);
-				write_new_secureinfo_ab();
+				write_new_secureinfo();
 
 				/*      -------------------------------------------------- */
-				printf("Success! Reboot so the new SecureInfo_%c loads.\n", data.secureinfo_ab_letter);
+				printf("Success! Reboot so the new SecureInfo_C loads.\n");
 				
 				final = update_state(ROS_WaitingRebootExit, 0);
 			}
@@ -435,6 +450,7 @@ int main(int argc, char* argv[])
 	consoleInit(GFX_TOP, &data.top);
 	consoleInit(GFX_BOTTOM, &data.bottom);
 	consoleSelect(&data.top);
+	romfsInit();
 
 	data.state = ROS_Started;
 	update_state(data.state, 0);
@@ -456,6 +472,7 @@ int main(int argc, char* argv[])
 
 	unmount_archives();
 
+	romfsExit();
 	gfxExit();
 
 	if (data.state == ROS_Rebooting) {

@@ -38,11 +38,12 @@ DATA		:=	data
 INCLUDES	:=	include
 GRAPHICS	:=	gfx
 GFXBUILD	:=	$(BUILD)
-#ROMFS		:=	romfs
+ROMFS		:=	romfs
 #GFXBUILD	:=	$(ROMFS)/gfx
 APP_TITLE	:=	restore-overwritten-secureinfo
 APP_DESCRIPTION	:=	Restore SecureInfo_A/B from inspect.log
 APP_AUTHOR	:=	ihaveahax
+VERSION		:=	0.2.0
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -53,7 +54,7 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations \
 			-ffunction-sections \
 			$(ARCH)
 
-CFLAGS	+=	$(INCLUDE) -D__3DS__
+CFLAGS	+=	$(INCLUDE) -D__3DS__ -DVERSION=\"$(VERSION)\"
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
