@@ -8,6 +8,7 @@
 #define INSPECT_LOG_BUF_SIZE 200
 // this is because SecureInfo_* lets it go up to 15 bytes
 #define SERIAL_NUMBER_MAX 16
+#define BYPASS_PRESS_AMOUNT 5
 
 #define SECINFO_C_PATH "ctrn:/rw/sys/SecureInfo_C"
 
@@ -33,6 +34,7 @@ enum AppState {
 struct AppStateData {
 	enum AppState state;
 	bool archives_mounted;
+	int bypass_check_press_count;
 	char log_serial_number[SERIAL_NUMBER_MAX];
 	char secureinfo_ab_letter;
 	uint8_t target_region;
@@ -301,12 +303,23 @@ enum AppState update_state(enum AppState wanted, u32 kDown) {
 				print_info();
 				printf("Press START or B to exit.\n");
 				printf("Press A to continue.\n");
+				printf("Press Y five times to bypass check.\n");
 			}
 
 			if (kDown & KEY_START || kDown & KEY_B) {
 				final = update_state(ROS_Exiting, 0);
 			} else if (kDown & KEY_A) {
 				final = update_state(ROS_CheckFiles, 0);
+			} else if (kDown & KEY_Y) {
+				data.bypass_check_press_count++;
+				printf(
+					"Bypass safety check with %i more press%s.\n",
+					BYPASS_PRESS_AMOUNT - data.bypass_check_press_count,
+					(BYPASS_PRESS_AMOUNT - data.bypass_check_press_count == 1 ? "" : "es")
+				);
+				if (data.bypass_check_press_count >= BYPASS_PRESS_AMOUNT) {
+					final = update_state(ROS_CheckFiles, 0);
+				}
 			}
 			break;
 		case ROS_ErrorWaitingExit:
@@ -373,10 +386,18 @@ enum AppState update_state(enum AppState wanted, u32 kDown) {
 				if (is_serial_number_valid(data.secureinfo_ab.serial)) {
 					/*      -------------------------------------------------- */
 					printf("SecureInfo_%c serial: %s\n", data.secureinfo_ab_letter, data.secureinfo_ab.serial);
-					printf("\nSecureInfo_%c seems to already have a serial.\n", data.secureinfo_ab_letter);
-					printf("You don't need this tool.\n");
-					final = update_state(ROS_WaitingExit, 0);
-					break;
+					printf("\nSecureInfo_%c seems to already have a serial.\n\n", data.secureinfo_ab_letter);
+					if (data.bypass_check_press_count >= BYPASS_PRESS_AMOUNT) {
+						/*      -------------------------------------------------- */
+						printf("You have decided to bypass this safety check.\n");
+						printf("I hope you REALLY know what you are doing!\n\n");
+					} else {
+						printf("For safety reasons, this tool will now exit.\n");
+						printf("If you are absolutely, positively, 100%% certain\n");
+						printf("that you need this tool, re-launch it.\n");
+						final = update_state(ROS_WaitingExit, 0);
+						break;
+					}
 				}
 
 				data.secureinfo_c_loaded = read_secureinfo('C', &data.secureinfo_c);

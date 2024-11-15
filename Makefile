@@ -43,7 +43,7 @@ ROMFS		:=	romfs
 APP_TITLE	:=	restore-overwritten-secureinfo
 APP_DESCRIPTION	:=	Restore SecureInfo_A/B from inspect.log
 APP_AUTHOR	:=	ihaveahax
-VERSION		:=	0.2.0
+VERSION		:=	0.3.0
 
 #---------------------------------------------------------------------------------
 # options for code generation
